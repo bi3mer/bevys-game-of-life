@@ -1,18 +1,19 @@
 use bevy::{
     prelude::*,
-    window::PresentMode,
+    window::PresentMode, 
+    time::FixedTimestep,
 };
 use rand::{rngs::SmallRng, SeedableRng, Rng};
 
 const SCREEN_WIDTH: f32 = 1080.;
 const SCREEN_HEIGHT: f32 = 720.;
 
-const GRID_WIDTH: usize = 108; // 1080 / 10, each cell is 10x10
-const GRID_HEIGHT: usize = 72; // 720 / 10
+const GRID_WIDTH: usize = 1010; // 1080 / 10, each cell is 10x10
+const GRID_HEIGHT: usize = 74; // 720 / 10
 
 #[derive(Component)]
 struct Cell {
-    alive: bool,
+    alive: bool
 }
 
 #[derive(Default, Resource)]
@@ -24,9 +25,9 @@ struct SpriteImages {
 fn setup(mut commands: Commands, asset_server: Res<AssetServer>) {
     // build grid
     let mut rng = SmallRng::from_entropy();
-    for y in 1..(GRID_HEIGHT - 1) {
-        for x in 1..(GRID_WIDTH - 1) {
-            let alive = rng.gen_bool(0.2);
+    for y in 0..GRID_HEIGHT {
+        for x in 0..GRID_WIDTH {
+            let alive = rng.gen_bool(0.35);
             commands
             .spawn((
                 Cell { 
@@ -57,13 +58,66 @@ fn setup(mut commands: Commands, asset_server: Res<AssetServer>) {
     );
 
     // set up the camera
-    commands.spawn_bundle(Camera2dBundle {
+    commands.spawn(Camera2dBundle {
         transform: Transform { 
             translation: Vec3::new(SCREEN_WIDTH / 2.0, SCREEN_HEIGHT / 2.0, 0.0),
             ..Default::default()
         },
         ..Default::default()
     });
+}
+
+fn update(
+    mut cells: Query<(&mut Cell, &mut Handle<Image>, &Transform)>,
+    sprite_images: Res<SpriteImages>
+) {
+    let mut cur = Vec::new();
+    let mut new = Vec::new();
+
+    cells.iter().for_each(|(cell, _, _)| {
+        cur.push(cell.alive);
+    });
+
+    
+    for i in 0..cur.len() {
+        let x = i % GRID_WIDTH;
+        let y = i / GRID_WIDTH;
+
+        if x >= 1 && x < GRID_WIDTH-1 && y >= 1 && y < GRID_HEIGHT-1 {
+            let neighbor_count = 
+                cur[x - 1 + (y - 1) * GRID_WIDTH] as u8 + 
+                cur[x     + (y - 1) * GRID_WIDTH] as u8 + 
+                cur[x + 1 + (y - 1) * GRID_WIDTH] as u8 + 
+                cur[x - 1 + y       * GRID_WIDTH] as u8 + 
+                cur[x + 1 + y       * GRID_WIDTH] as u8 + 
+                cur[x - 1 + (y + 1) * GRID_WIDTH] as u8 + 
+                cur[x     + (y + 1) * GRID_WIDTH] as u8 + 
+                cur[x + 1 + (y + 1) * GRID_WIDTH] as u8;
+    
+    
+            if cur[i] && (neighbor_count == 2 || neighbor_count == 3) {
+                new.push(true);
+            } else if !cur[i] && neighbor_count == 3 {
+                new.push(false);
+            } else {
+                new.push(false);
+            }
+        } else {
+            new.push(false);
+        }
+    }
+
+    for (i, (mut cell, mut sprite, _)) in cells.iter_mut().enumerate() {
+        if cell.alive != new[i] {
+            cell.alive = new[i];
+
+            if cell.alive {
+                *sprite = sprite_images.alive_cell.clone();
+            } else {
+                *sprite = sprite_images.dead_cell.clone();
+            }
+        }
+    }
 }
 
 fn main() {
@@ -79,5 +133,10 @@ fn main() {
             ..default()
         }))
         .add_startup_system(setup)
+        .add_system_set(
+            SystemSet::new()
+                .with_run_criteria(FixedTimestep::step(0.75))
+                .with_system(update)
+        )
         .run();
 }
